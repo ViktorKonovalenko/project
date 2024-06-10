@@ -1,0 +1,131 @@
+---
+# tasks file for backend
+  - name: disable firewalld service
+    service:
+      name: firewalld
+      state: stopped
+      enabled: false
+
+  # Отключаем SElinux
+  - name: Disable SELinux
+    selinux:
+      state: disabled
+
+  # Отключаем SElinux после перезагрузки
+  - name: Ensure SELinux is set to disable mode
+    lineinfile:
+      path: /etc/selinux/config
+      regexp: '^SELINUX='
+      line: SELINUX=disabled
+
+  - name: 'Ставим нужные пакеты'
+    yum:
+      name: "{{ item }}"
+      state: latest
+    with_items:
+      - epel-release
+      - yum-utils
+      - nginx
+      - zabbix-agent
+  - name: 'Подключаем репозиторий php'   
+    shell: rpm -Uvh http://rpms.remirepo.net/enterprise/remi-release-7.rpm
+    ignore_errors: yes
+  
+  - name: 'Активируем remi-php73'
+    shell: yum-config-manager --enable remi-php73
+    ignore_errors: yes
+
+  - name: 'Ставим пакеты для php'
+    yum:
+      name: "{{ item }}"
+      state: latest
+    with_items:
+      - php-fpm
+      - php-cli
+      - php-mysql
+      - php-gd
+      - php-ldap
+      - php-odbc
+      - php-pdo
+      - php-pecl-memcache
+      - php-opcache
+      - php-pear
+      - php-xml
+      - php-xmlrpc
+      - php-mbstring
+      - php-snmp
+      - php-soap
+      - php-zip
+      - php-pgsql
+  - name: 'Копируем конфиг для php-fpm'
+    copy: 
+      src: www.conf
+      dest: /etc/php-fpm.d/www.conf
+
+  - name: 'Запускаем php-fpm'
+    systemd:
+      name: php-fpm
+      state: started
+      enabled: yes
+ 
+  - name: 'Создаем директории для проекта'
+    file: 
+      path: /var/www/test.ru
+      state: directory
+      owner: nginx
+      group: nginx
+      mode: 0755
+    
+  - name: 'Создаем директории для проекта'
+    file:
+      path: /var/www/test.ru/site
+      state: directory
+      owner: nginx
+      group: nginx
+      mode: 0755
+
+  - name: 'Создаем директории для логов проекта'
+    file:
+      path: /var/www/test.ru/log
+      state: directory
+
+  - name: 'Копируем конфиг nginx'
+    template:
+      src: otus_project.conf.j2
+      dest: /etc/nginx/conf.d/otus_project.conf
+    when: (ansible_hostname == "web")
+
+#  - name: 'Копируем конфиг nginx'
+#    template:
+#      src: otus_project.conf2.j2
+#      dest: /etc/nginx/conf.d/otus_project.conf
+#    when: (ansible_hostname == "back2")
+
+  - name: 'Создаем сертификат'
+    shell: openssl req -x509 -out /etc/nginx/certs/localhost.crt -keyout /etc/nginx/certs/localhost.key -newkey rsa:2048 -nodes -sha256 -subj '/CN=localhost' -extensions EXT -config <( \ printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
+
+  - name: 'Запускаем nginx'
+    systemd: 
+      name: nginx
+      state: started
+      enabled: yes
+
+
+  - name: 'Копируем index.php'
+    template:
+      src: script.php.j2
+      dest: /var/www/test.ru/site/index.php
+      owner: nginx
+      group: nginx
+
+
+  - name: 'копируем кофиг zabbix'
+    template:
+      src: zabbix_agent.conf.j2
+      dest: /etc/zabbix/zabbix_agent.conf
+      
+  - name: 'Перезапуск zabbix-agent'
+    systemd:
+      name: zabbix-agent
+      state: restarted
+      enabled: yes

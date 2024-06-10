@@ -1,0 +1,16 @@
+---
+- name: Задаем имя front
+  hosts: web
+  become: yes
+  tasks:
+  - name: Set a hostname
+    hostname:
+      name: web
+
+- name: 'РАзвертка сервера front'
+  hosts: web
+  become: yes
+  roles:
+   - front
+
+

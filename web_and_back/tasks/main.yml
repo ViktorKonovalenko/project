@@ -1,0 +1,12 @@
+---
+# tasks file for web_and_back
+- name: 'Копируем конфиг на front с новым бэком'
+  template:
+    src: test.ru.conf.j2
+    dest: /etc/nginx/conf.d/test.ru.conf
+
+- name: 'перезапускаем nginx'
+  systemd: 
+    name: nginx
+    state: restarted
+

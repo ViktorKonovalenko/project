@@ -1,0 +1,29 @@
+---
+- name: Задаем имя backend
+  hosts: back1
+  become: yes
+  tasks:
+  - name: Set a hostname
+    hostname:
+      name: back1
+
+- name: Задаем имя backend
+  hosts: back2
+  become: yes
+  tasks:
+  - name: Set a hostname
+    hostname:
+      name: back2
+
+- name: 'РАзвертка сервера backend'
+  hosts: backend
+  become: yes
+  roles:
+   - backend
+
+- name: 'Изменения фронта'
+  hosts: web
+  become: yes
+  roles:
+   - web_and_back
+

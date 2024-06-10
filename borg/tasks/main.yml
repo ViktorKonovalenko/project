@@ -1,0 +1,51 @@
+---
+- name: 'Установка epel'
+  yum: 
+    name: epel-release
+    state: latest
+
+- name: 'Установка borgbackup'
+  yum:
+    name: borgbackup
+    state: latest
+
+- name: 'Создание пользователя'
+  user: 
+    name: borg
+#   password: 123456
+  when: "'backup' in inventory_hostname"
+
+- name: 'Добавляем known hosts'
+  shell: ssh-keyscan {{ web_ip }} >> ~/.ssh/known_hosts
+  when: (ansible_hostname == "web")
+
+- name: 'Добавляем known hosts'
+  shell: ssh-keyscan {{ web_ip }} >> ~/.ssh/known_hosts
+  when: (ansible_hostname == "backup")
+
+
+#  Генерируем SSH-ключ для пользователя barman на хосте barman
+- name: generate SSH key for borg
+  user:
+    name: borg
+    shell: /bin/bash
+    generate_ssh_key: yes
+    ssh_key_type: rsa
+    ssh_key_bits: 4096
+    force: no
+  when: (ansible_hostname == "backup")
+
+  #  Забираем содержимое открытого ключа 
+- name: 
+  shell: cat /var/lib/pgsql/.ssh/id_rsa.pub
+  register: ssh_keys
+  when: (ansible_hostname == "node1")
+
+  #  Копируем ключ с barman на node1
+- name: transfer public key to barman
+  delegate_to: barman
+  authorized_key:
+    key: "{{ ssh_keys.stdout }}"
+    comment: "{{ansible_hostname}}"
+    user: barman
+  when: (ansible_hostname == "node1")

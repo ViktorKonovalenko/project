@@ -1,0 +1,60 @@
+server {
+     listen  8080 ssl http2;
+     server_name {{ back1_ip }};
+     index script.php;
+     access_log /var/www/test.ru/log/access.log;
+     error_log /var/www/test.ru/log/error.log;
+     root /var/www/test.ru/site/;
+     ssl_certificate "/etc/nginx/certs/localhost.crt";
+     ssl_certificate_key "/etc/nginx/certs/localhost.key";
+     ssl_session_cache shared:SSL:1m;
+     ssl_session_timeout  10m;
+     ssl_ciphers HIGH:!aNULL:!MD5;
+     ssl_prefer_server_ciphers on;
+
+ location / {
+     try_files $uri $uri/ /script.php?$args;
+ }
+ location ~ .php$ {
+     try_files  $uri =404;
+     fastcgi_pass   unix:/var/run/php-fpm/php-fpm.sock;
+     fastcgi_index index.php;
+     fastcgi_param DOCUMENT_ROOT /var/www/test.ru/site/;
+     fastcgi_param SCRIPT_FILENAME /var/www/test.ru/site$fastcgi_script_name;
+     fastcgi_param PATH_TRANSLATED /var/www/test.ru/site$fastcgi_script_name;
+     include fastcgi_params;
+     fastcgi_param QUERY_STRING $query_string;
+     fastcgi_param REQUEST_METHOD $request_method;
+     fastcgi_param CONTENT_TYPE $content_type;
+     fastcgi_param CONTENT_LENGTH $content_length;
+     fastcgi_intercept_errors on;
+     fastcgi_ignore_client_abort off;
+     fastcgi_connect_timeout 60;
+     fastcgi_send_timeout 180;
+     fastcgi_read_timeout 180;
+     fastcgi_buffer_size 128k;
+     fastcgi_buffers 4 256k;
+     fastcgi_busy_buffers_size 256k;
+     fastcgi_temp_file_write_size 256k;
+ }
+ location ~* ^.+\.(jpg|jpeg|gif|bmp|ico|png|css|js|swf)$ {
+      expires modified +30d;
+      access_log off;
+}
+ location = /favicon.ico {
+     log_not_found off;
+     access_log off;
+ }
+ location = /robots.txt {
+     rewrite ^ /robots.txt break;
+     allow all;
+     log_not_found off;
+     access_log off;
+ }
+ location = / {
+  proxy_pass https://{{ web_ip }}:443/;
+
+ }
+
+}
+

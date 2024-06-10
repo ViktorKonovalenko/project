@@ -1,0 +1,14 @@
+[all]
+web ansible_host=192.168.0.9 ansible_connection=ssh ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_rsa
+
+
+
+[db]
+db1 ansible_host=192.168.0.21 ansible_connection=ssh ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_rsa
+backup ansible_host=192.168.0.16 ansible_connection=ssh ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_rsa
+db3 ansible_host=192.168.0.14 ansible_connection=ssh ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_rsa
+
+
+[backend]
+back1 ansible_host=192.168.0.8 ansible_connection=ssh ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_rsa
+back2 ansible_host=192.168.0.11 ansible_connection=ssh ansible_port=22 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_rsa
