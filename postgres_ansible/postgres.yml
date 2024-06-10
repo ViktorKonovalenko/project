@@ -1,0 +1,47 @@
+---
+- name: Задаем имя db1
+  hosts: db1
+  become: yes
+  tasks:
+  - name: Set a hostname
+    hostname:
+      name: db1
+
+- name: Задаем имя db2
+  hosts: db3
+  become: yes
+  tasks:
+  - name: имя db
+    hostname:
+      name: db3
+
+- name: Задаем имя backup
+  hosts: backup
+  become: yes
+  tasks:
+  - name: имя backup
+    hostname:
+      name: backup
+  tags: backup
+
+#Запуск ролей install_postgres и postgres_replication на хостах node1 и node2
+- name: install postgres 14 and set up replication
+  hosts: db1,db3
+  become: yes
+  roles:
+   - install_postgres
+
+#Запуск роли install_pgbackrest
+- name: Настройка бэкапов
+  hosts: db
+  become: yes
+  roles:
+   - install_pgbackrest
+  tags: backup
+
+- name: install postgres 14 and set up replication
+  hosts: db1,db3
+  become: yes
+  roles:
+   - postgres_replication
+

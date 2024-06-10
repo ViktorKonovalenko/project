@@ -1,0 +1,4 @@
+---
+# vars file for install_postgres
+stanza_name: backup
+host_pgbackrest:

@@ -1,0 +1,211 @@
+---
+# tasks file for install_barman
+- name: disable firewalld service
+  service:
+    name: firewalld
+    state: stopped
+    enabled: false
+  when: (ansible_hostname == "backup")
+
+   # Отключаем SElinux
+- name: Disable SELinux
+  selinux:
+    state: disabled
+  when: (ansible_hostname == "backup")
+
+- name: Ensure SELinux is set to disable mode
+  lineinfile:
+    path: /etc/selinux/config
+    regexp: '^SELINUX='
+    line: SELINUX=disabled
+  when: (ansible_hostname == "backup")
+
+- name: install base tools
+  yum:
+    name:
+      - python36-pexpect
+      - python-pip
+      - python3-psycopg2
+      - python-psycopg2
+      - bash-completion 
+      - wget
+      - make
+      - gcc
+      - openssl-devel
+      - libxml2-devel
+      - lz4-devel
+      - libzstd-devel
+      - bzip2-devel
+      - libyaml-devel
+      - postgresql-devel 
+      - postgresql-libs
+      - zabbix-agent
+    state: present
+- name: Install pexpect
+  pip:
+    name: pexpect
+- name: 'Создаем директорию'
+  file:
+    path: /build
+    state: directory
+- name: 'Скачиваем новый дистрибутив'
+  get_url:
+    url:  https://github.com/pgbackrest/pgbackrest/archive/release/2.50.tar.gz
+    dest: /build
+- name: 'Распаковываем архив'
+  unarchive:
+    src: /build/pgbackrest-release-2.50.tar.gz
+    dest: /build
+    remote_src: yes
+- name: 'Конфигурируем pgbackrest'
+  shell: cd /build/pgbackrest-release-2.50/src && ./configure && make
+- name: 'Копируем pgbackrest'
+  shell: cp /build/pgbackrest-release-2.50/src/pgbackrest /usr/bin
+- name: 'Задаем права файлу'
+  shell: chmod 755 /usr/bin/pgbackrest
+
+- name: 'Создаем каталог для логов pgbackrest'
+  file:
+    path: /var/log/pgbackrest
+    state: directory
+    mode: 0770
+    owner: postgres
+    group: postgres
+  when: (ansible_hostname == "db1")
+
+- name: 'Создание каталога pgbackrest'
+  file:
+    path: /etc/pgbackrest
+    state: directory
+    owner: root
+    group: root
+  when: (ansible_hostname == "db1")
+
+- name: 'Создание каталога conf.d'
+  file:
+    path: /etc/pgbackrest/conf.d
+    state: directory
+    owner: root
+    group: root
+  when: (ansible_hostname == "db1")
+
+- name: 'Копируем конфиг pgbackrest'
+  template:
+    src: pgbackrest.conf.j2
+    dest: /etc/pgbackrest/pgbackrest.conf
+    owner: postgres
+    group: postgres
+    mode: '0640'
+  when: (ansible_hostname == "db1")
+
+- name: 'Создаем директорию для архивов'
+  file:
+    path: /var/spool/pgbackrest
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0750'
+  when: (ansible_hostname == "db1")
+
+
+- name: 'Создаем директорию ssh'
+  file:
+    path: /var/lib/pgsql/.ssh
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0750'
+  when: (ansible_hostname == "db1")
+
+- name: 'Добавляем known hosts'
+  shell: ssh-keyscan {{ backup_ip }} >> ~/.ssh/known_hosts
+  when: (ansible_hostname == "db1")
+
+- name: 'Добавляем known hosts'
+  shell: ssh-keyscan {{ master_ip }} >> ~/.ssh/known_hosts
+  when: (ansible_hostname == "backup")
+
+- name: Генерируем ключ ssh для pgbackrest
+  openssh_keypair:
+    path: /var/lib/pgsql/.ssh/id_rsa
+    owner: postgres
+    group: postgres
+  when: (ansible_hostname == "db1")
+
+- name: 'Помещаем ssh ключ в переменную'
+  shell: cat /root/.ssh/id_rsa.pub
+  register: ssh_keys
+  when: (ansible_hostname == "db1")
+
+- name: 'Копируем ключ на сервер бэкапа'
+  delegate_to: backup
+  authorized_key:
+    key: "{{ ssh_keys.stdout }}"
+    comment: "{{ansible_hostname}}"
+    user: root
+  when: (ansible_hostname == "db1")
+
+- name: 'Помещаем ssh ключ в переменную'
+  shell: cat /root/.ssh/id_rsa.pub
+  register: ssh_keys
+  when: (ansible_hostname == "backup")
+
+- name: 'Копируем ключ на сервер бд'
+  delegate_to: db1
+  authorized_key:
+    key: "{{ ssh_keys.stdout }}"
+    comment: "{{ansible_hostname}}"
+    user: root
+  when: (ansible_hostname == "backup")
+
+- name: 'Копируем ключ для pgbackrest'
+  shell: (echo -n 'no-agent-forwarding,no-X11-forwarding,no-port-forwarding,' && echo -n 'command="/usr/bin/pgbackrest ${SSH_ORIGINAL_COMMAND#* }" ' &&  sudo ssh root@{{ master_ip }} cat /var/lib/pgsql/.ssh/id_rsa.pub) |   sudo -u pgbackrest tee -a /home/pgbackrest/.ssh/authorized_keys
+  when: (ansible_hostname == "backup")
+   
+- name: 'Копируем ключ для pgbackrest'
+  shell: (echo -n 'no-agent-forwarding,no-X11-forwarding,no-port-forwarding,' && echo -n 'command="/usr/bin/pgbackrest ${SSH_ORIGINAL_COMMAND#* }" ' &&   sudo ssh root@{{ backup_ip }} cat /home/pgbackrest/.ssh/id_rsa.pub) |   sudo -u postgres tee -a /var/lib/pgsql/.ssh/authorized_keys
+  when: (ansible_hostname == "db1")
+- name: 'Копируем конфиг pgbackrest'
+  template:
+    src: pgbackrest_backup.conf.j2
+    dest: /etc/pgbackrest/pgbackrest.conf
+    owner: pgbackrest
+    group: pgbackrest
+    mode: '0640'
+  when: (ansible_hostname == "backup")
+
+- name: 'останавливаем postgres'
+  systemd: 
+    name: postgresql-14
+    state: stopped
+  when: (ansible_hostname == "db1")
+
+- name: 'Очищаем PG_DATA'
+  shell: rm -rf /var/lib/pgsql/14/data
+  when: (ansible_hostname == "db1")
+
+- name: 'Запускаем восстановление'
+  expect:
+    command: 'sudo -u postgres pgbackrest --stanza=backup --delta restore'
+    responses:
+      '.*Are you sure you want to continue connecting*': "yes"
+  when: (ansible_hostname == "db1")
+
+- name: 'Запускаем postgres'
+  systemd:
+    name: postgresql-14
+    state: started
+    enabled: yes
+  when: (ansible_hostname == "db1")
+
+- name: 'Копируем конфиг zabbix'
+  template:
+    src: zabbix_agent.conf.j2
+    dest: /etc/zabbix_agent.conf
+
+- name: 'Перезапускаем zabbix агента'
+  systemd: 
+    name: zabbix-agent
+    state: restarted
+    enabled: yes
+
